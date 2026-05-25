@@ -66,6 +66,10 @@ global_dim = 2 ** n_qubits
 seeds = [0, 1, 2, 3, 4]
 
 
+epochs= 500
+LAYERS = 5
+LR = 0.01
+
 # ============================================================
 # 2. Hamiltoniano diagonal
 # ============================================================
@@ -293,7 +297,7 @@ def expected_energy(theta, G0_re, G0_im, G1_re, G1_im, G2_re, G2_im, energies):
 # 5. Treino DVQA
 # ============================================================
 
-def train_once(lam, A, chi, seed=0, layers=2, epochs=80, lr=0.06, verbose=False):
+def train_once(lam, A, chi, seed=0, layers=5, epochs=epochs, lr=0.01, verbose=False):
     torch.manual_seed(seed)
     np.random.seed(seed)
 
@@ -401,7 +405,7 @@ def best_valid_from_probs(probs):
 # 7. Desenho textual do circuito PennyLane
 # ============================================================
 
-def print_example_circuit(layers=2):
+def print_example_circuit(layers=5):
     """
     Mostra o subcircuito local de 3 qubits.
     """
@@ -422,7 +426,7 @@ def print_example_circuit(layers=2):
 # 8. Experimento A: variar A
 # ============================================================
 
-print_example_circuit(layers=2)
+print_example_circuit(layers=LAYERS)
 
 A_values = [0.2, 0.5, 1.0, 2.0, 4.0, 8.0, 12.0]
 
@@ -443,13 +447,13 @@ for A in A_values:
         A=A,
         chi=chi_for_A,
         seed=0,
-        layers=2,
-        epochs=60,
-        lr=0.06,
+        layers=LAYERS,
+        epochs=epochs,
+        lr=LR,
         verbose=False,
     )
 
-    vc, ic, vr, ir = top_probability_validity(out["probs"], top_k=20)
+    vc, ic, vr, ir = top_probability_validity(out["probs"], top_k=10)
 
     invalid_counts.append(ic)
     valid_mass_ratios.append(vr)
@@ -467,6 +471,7 @@ plt.ylabel("Número de bitstrings inválidas no top 20")
 plt.title("Rotas inválidas em função de A")
 plt.grid(alpha=0.3)
 plt.tight_layout()
+plt.savefig("A_invalid_count.png", dpi=300)
 plt.show()
 
 plt.figure(figsize=(7, 4))
@@ -478,6 +483,7 @@ plt.title("Probabilidade válida vs inválida em função de A")
 plt.grid(alpha=0.3)
 plt.legend()
 plt.tight_layout()
+plt.savefig("A_valid_invalid_mass.png", dpi=300)
 plt.show()
 
 A_best = 8.0
@@ -516,9 +522,9 @@ for lam in lambda_values:
             A=A_best,
             chi=chi_for_lambda,
             seed=seed,
-            layers=2,
-            epochs=70,
-            lr=0.05,
+            layers=LAYERS,
+            epochs=epochs,
+            lr=LR,
             verbose=False,
         )
 
@@ -570,6 +576,7 @@ plt.ylabel("Energia final média")
 plt.title("Energia variacional final em função da preferência")
 plt.grid(alpha=0.3)
 plt.tight_layout()
+plt.savefig("lambda_energy.png", dpi=300)
 plt.show()
 
 plt.figure(figsize=(7, 4))
@@ -579,6 +586,7 @@ plt.ylabel("Tempo médio da rota válida")
 plt.title("Tempo da rota em função da preferência")
 plt.grid(alpha=0.3)
 plt.tight_layout()
+plt.savefig("lambda_time.png", dpi=300)
 plt.show()
 
 plt.figure(figsize=(7, 4))
@@ -588,6 +596,7 @@ plt.ylabel("Carbono médio da rota válida")
 plt.title("Carbono da rota em função da preferência")
 plt.grid(alpha=0.3)
 plt.tight_layout()
+plt.savefig("lambda_carbon.png", dpi=300)
 plt.show()
 
 plt.figure(figsize=(7, 4))
@@ -597,6 +606,7 @@ plt.ylabel("Probabilidade média")
 plt.title("Probabilidade da rota válida mais provável")
 plt.grid(alpha=0.3)
 plt.tight_layout()
+plt.savefig("lambda_prob.png", dpi=300)
 plt.show()
 
 plt.figure(figsize=(7, 4))
@@ -606,6 +616,7 @@ plt.ylabel("Número médio de inválidas no top 20")
 plt.title("Inválidas no top 20 em função da preferência")
 plt.grid(alpha=0.3)
 plt.tight_layout()
+plt.savefig("lambda_invalids.png", dpi=300)
 plt.show()
 
 # Escolha manual: compromisso equilibrado.
@@ -621,7 +632,7 @@ print("beta   =", 1.0 - lambda_best)
 # 10. Experimento C: variar chi
 # ============================================================
 
-chi_values = [1, 2, 3, 4, 6]
+chi_values = [1, 2, 3, 5, 7, 11]
 
 chi_energy_mean = []
 chi_energy_std = []
@@ -638,9 +649,9 @@ for chi in chi_values:
             A=A_best,
             chi=chi,
             seed=seed,
-            layers=2,
-            epochs=80,
-            lr=0.05,
+            layers=LAYERS,
+            epochs=epochs,
+            lr=LR,
             verbose=False,
         )
 
@@ -676,6 +687,7 @@ plt.ylabel("Energia final média")
 plt.title("Resultado final em função de chi - média sobre 5 seeds")
 plt.grid(alpha=0.3)
 plt.tight_layout()
+plt.savefig("chi_energy.png", dpi=300)
 plt.show()
 
 plt.figure(figsize=(7, 4))
@@ -685,6 +697,7 @@ plt.ylabel("Probabilidade média da melhor rota válida")
 plt.title("Probabilidade da rota válida em função de chi")
 plt.grid(alpha=0.3)
 plt.tight_layout()
+plt.savefig("chi_prob.png", dpi=300)
 plt.show()
 
 best_chi = chi_values[int(np.argmin(chi_energy_mean))]
@@ -707,9 +720,9 @@ final = train_once(
     A=A_best,
     chi=best_chi,
     seed=0,
-    layers=2,
-    epochs=160,
-    lr=0.05,
+    layers=LAYERS,
+    epochs=epochs,
+    lr=LR,
     verbose=True,
 )
 
@@ -747,6 +760,7 @@ plt.ylabel("Energia esperada")
 plt.title("Loss do treino final")
 plt.grid(alpha=0.3)
 plt.tight_layout()
+plt.savefig("loss_final.png", dpi=300)
 plt.show()
 
 top_k = 20
@@ -776,6 +790,7 @@ plt.ylabel("Probabilidade")
 plt.title("Probabilidades finais das top bitstrings - 9 qubits")
 plt.grid(axis="y", alpha=0.3)
 plt.tight_layout()
+plt.savefig("top_bitstrings.png", dpi=300)
 plt.show()
 
 coords = {
@@ -805,4 +820,5 @@ plt.title("Rota final: " + " -> ".join(names[i] for i in route))
 plt.axis("equal")
 plt.grid(alpha=0.3)
 plt.tight_layout()
+plt.savefig("rota_final.png", dpi=300)
 plt.show()
