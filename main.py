@@ -1,41 +1,30 @@
 # ============================================================
-# DVQA simples para o Desafio de Mobilidade
-# Com tensor C em formato MPS/TT e variação de chi
+# DVQA para o Desafio de Mobilidade
+# Versão com subcircuitos construídos em PennyLane
+# alpha=lambda, beta=1-lambda
+# Tensor C em MPS/TT com bond dimension chi
 # ============================================================
 #
-# Este script faz:
+# Ideia:
 #
-# 1) Quebra o problema em 3 subcircuitos de brickwall RX, RY, RZ.
-#    Cada subcircuito tem 3 qubits.
+#   |phi> = (U0 ⊗ U1 ⊗ U2) |C_chi>
 #
-# 2) Reconstrói um estado global:
+# onde:
+#   - U0, U1, U2 são subcircuitos PennyLane de 3 qubits;
+#   - cada Uk é um brickwall RX, RY, RZ;
+#   - |C_chi> é um estado virtual global em MPS/TT;
+#   - chi controla a bond dimension do tensor clássico.
 #
-#       |phi> = (U0 ⊗ U1 ⊗ U2) |C_chi>
-#
-#    onde C_chi é um tensor clássico em formato MPS/TT:
-#
-#       C[a,b,c] = sum_{r1,r2} G0[a,r1] G1[r1,b,r2] G2[r2,c]
-#
-#    O parâmetro chi é a bond dimension.
-#
-# 3) Calcula o valor esperado:
-#
-#       <H> = sum_z p(z) H(z)
-#
-# 4) Faz um grid simples em alpha e beta com 5 seeds.
-#
-# 5) Escolhe o melhor alpha e beta pelo menor valor médio de energia.
-#
-# 6) Com esse melhor alpha e beta, treina para diferentes chi e plota:
-#
-#       chi  x  energia final média sobre 5 seeds
-#
-# 7) Faz um treino final com o melhor chi e plota as probabilidades finais.
+# A diferença desta versão:
+#   Os subcircuitos locais são construídos em PennyLane.
+#   Depois usamos qml.matrix(...) para obter a matriz unitária Uk
+#   e reconstruir o estado global via contração tensorial.
 #
 # ============================================================
 
 import numpy as np
 import torch
+import pennylane as qml
 import matplotlib.pyplot as plt
 
 torch.set_default_dtype(torch.float64)
@@ -63,42 +52,34 @@ carbono = np.array([
 tempo_norm = tempo / tempo[tempo > 0].max()
 carbono_norm = carbono / carbono[carbono > 0].max()
 
-# Usamos 9 qubits:
-# 3 pontos de entrega x 3 posições na rota.
+# 9 qubits = 3 pontos x 3 posições.
 n_points = 3
 n_pos = 3
 n_qubits = n_points * n_pos
 
-# DVQA:
-# 3 subcircuitos de 3 qubits.
+# DVQA: 3 subcircuitos de 3 qubits.
 K = 3
 sub_n = 3
 sub_dim = 2 ** sub_n
 global_dim = 2 ** n_qubits
 
+seeds = [0, 1, 2, 3, 4]
+
+
 # ============================================================
-# 2. Hamiltoniano diagonal do problema
+# 2. Hamiltoniano diagonal
 # ============================================================
 
 def q(i, t):
     """
-    Índice do qubit da variável x_{i,t}.
-
+    Índice da variável x_{i,t}.
     i = 0,1,2 representa P1,P2,P3.
-    t = 0,1,2 representa a posição na rota.
-
-    Organização:
-        t=0: q0,q1,q2
-        t=1: q3,q4,q5
-        t=2: q6,q7,q8
+    t = 0,1,2 representa posição da rota.
     """
     return t * n_points + i
 
 
 def bits_to_x(bits):
-    """
-    Transforma a bitstring de 9 bits em matriz x[i,t].
-    """
     x = np.zeros((n_points, n_pos), dtype=int)
 
     for i in range(n_points):
@@ -110,15 +91,10 @@ def bits_to_x(bits):
 
 def decode_route(bits):
     """
-    Converte a bitstring em rota:
-
-        Hub -> ... -> ... -> ... -> Hub
-
-    Se alguma posição tiver zero ou mais de um ponto,
-    aparece None naquela posição.
+    Decodifica:
+        Hub -> posição 0 -> posição 1 -> posição 2 -> Hub
     """
     x = bits_to_x(bits)
-
     route = [0]
 
     for t in range(n_pos):
@@ -134,11 +110,6 @@ def decode_route(bits):
 
 
 def is_valid(bits):
-    """
-    Rota válida:
-    - cada ponto aparece exatamente uma vez;
-    - cada posição tem exatamente um ponto.
-    """
     x = bits_to_x(bits)
 
     each_point_once = np.all(x.sum(axis=1) == 1)
@@ -148,9 +119,6 @@ def is_valid(bits):
 
 
 def route_time_carbon(route):
-    """
-    Calcula tempo e carbono reais da rota.
-    """
     if None in route:
         return np.nan, np.nan
 
@@ -164,34 +132,31 @@ def route_time_carbon(route):
     return total_time, total_carbon
 
 
-def energy_bits(bits, alpha, beta, A):
+def energy_bits(bits, lam, A):
     """
-    Energia de uma bitstring:
+    alpha = lambda
+    beta  = 1 - lambda
 
-        H = alpha H_carbono + beta H_tempo + A H_restricoes
-
-    As restrições são one-hot:
-    - cada ponto aparece uma vez;
-    - cada posição recebe um ponto.
+    H = lambda H_carbono + (1-lambda) H_tempo + A H_restr.
     """
+    alpha = lam
+    beta = 1.0 - lam
+
     x = bits_to_x(bits)
     route = decode_route(bits)
 
     h_carbon = 0.0
     h_time = 0.0
 
-    # Se a posição é decodificável, calculamos o custo do caminho.
     if None not in route:
         for a, b in zip(route[:-1], route[1:]):
             h_carbon += carbono_norm[a, b]
             h_time += tempo_norm[a, b]
 
-    # Penalidade: cada ponto aparece uma vez.
     p_point = 0.0
     for i in range(n_points):
         p_point += (np.sum(x[i, :]) - 1.0) ** 2
 
-    # Penalidade: cada posição recebe um ponto.
     p_pos = 0.0
     for t in range(n_pos):
         p_pos += (np.sum(x[:, t]) - 1.0) ** 2
@@ -199,116 +164,80 @@ def energy_bits(bits, alpha, beta, A):
     return alpha * h_carbon + beta * h_time + A * (p_point + p_pos)
 
 
-def build_energy_vector(alpha, beta, A):
-    """
-    Cria o vetor H(z) para todos os 2^9 estados.
-    """
+def build_energy_vector(lam, A):
     energies = np.zeros(global_dim)
 
     for s in range(global_dim):
         bits = np.array(list(np.binary_repr(s, width=n_qubits)), dtype=int)
-        energies[s] = energy_bits(bits, alpha, beta, A)
+        energies[s] = energy_bits(bits, lam, A)
 
     return torch.tensor(energies, dtype=torch.float64)
 
 
+def brute_force_best_valid(lam, A):
+    best_e = np.inf
+    best_bits = None
+    best_route = None
+
+    for s in range(global_dim):
+        bits = np.array(list(np.binary_repr(s, width=n_qubits)), dtype=int)
+
+        if not is_valid(bits):
+            continue
+
+        e = energy_bits(bits, lam, A)
+
+        if e < best_e:
+            best_e = e
+            best_bits = bits
+            best_route = decode_route(bits)
+
+    ttot, ctot = route_time_carbon(best_route)
+
+    return best_e, best_bits, best_route, ttot, ctot
+
+
 # ============================================================
-# 3. Portas RX, RY, RZ e subcircuito brickwall
+# 3. Subcircuito local em PennyLane
 # ============================================================
 
-I2 = torch.eye(2, dtype=torch.complex128)
-
-def RX(theta):
-    c = torch.cos(theta / 2)
-    s = torch.sin(theta / 2)
-
-    return torch.stack([
-        torch.stack([c + 0j, -1j * s]),
-        torch.stack([-1j * s, c + 0j]),
-    ])
-
-
-def RY(theta):
-    c = torch.cos(theta / 2)
-    s = torch.sin(theta / 2)
-
-    return torch.stack([
-        torch.stack([c + 0j, -s + 0j]),
-        torch.stack([s + 0j, c + 0j]),
-    ])
-
-
-def RZ(theta):
-    zero = torch.tensor(0.0 + 0.0j, dtype=torch.complex128)
-
-    return torch.stack([
-        torch.stack([torch.exp(-0.5j * theta), zero]),
-        torch.stack([zero, torch.exp(0.5j * theta)]),
-    ])
-
-
-def kron3(A, B, C):
-    return torch.kron(torch.kron(A, B), C)
-
-
-def one_qubit_gate_on_3q(G, wire):
-    ops = []
-
-    for w in range(3):
-        if w == wire:
-            ops.append(G)
-        else:
-            ops.append(I2)
-
-    return kron3(ops[0], ops[1], ops[2])
-
-
-def cnot_3q(control, target):
+def pennylane_brickwall_ansatz(theta_sub, wires=(0, 1, 2)):
     """
-    CNOT em 3 qubits como matriz 8x8.
-    """
-    U = torch.zeros((8, 8), dtype=torch.complex128)
-
-    for s in range(8):
-        bits = [int(b) for b in np.binary_repr(s, width=3)]
-
-        if bits[control] == 1:
-            bits[target] = 1 - bits[target]
-
-        out = int("".join(str(b) for b in bits), 2)
-        U[out, s] = 1.0 + 0.0j
-
-    return U
-
-
-CNOT_01 = cnot_3q(0, 1)
-CNOT_12 = cnot_3q(1, 2)
-
-
-def local_brickwall_unitary(theta_sub):
-    """
-    Unidade local Uk de 3 qubits.
+    Subcircuito brickwall local de 3 qubits em PennyLane.
 
     theta_sub shape:
         (layers, 3, 3)
 
-    theta_sub[l,w,0] = RX
-    theta_sub[l,w,1] = RY
-    theta_sub[l,w,2] = RZ
+    theta_sub[l,w,0] -> RX
+    theta_sub[l,w,1] -> RY
+    theta_sub[l,w,2] -> RZ
     """
-    U = torch.eye(8, dtype=torch.complex128)
-
     layers = theta_sub.shape[0]
 
     for l in range(layers):
-        for w in range(3):
-            U = one_qubit_gate_on_3q(RX(theta_sub[l, w, 0]), w) @ U
-            U = one_qubit_gate_on_3q(RY(theta_sub[l, w, 1]), w) @ U
-            U = one_qubit_gate_on_3q(RZ(theta_sub[l, w, 2]), w) @ U
+        for j, wire in enumerate(wires):
+            qml.RX(theta_sub[l, j, 0], wires=wire)
+            qml.RY(theta_sub[l, j, 1], wires=wire)
+            qml.RZ(theta_sub[l, j, 2], wires=wire)
 
-        # Brickwall em 3 qubits.
-        U = CNOT_01 @ U
-        U = CNOT_12 @ U
+        # Brickwall local:
+        qml.CNOT(wires=[wires[0], wires[1]])
+        qml.CNOT(wires=[wires[1], wires[2]])
+
+
+def local_unitary_from_pennylane(theta_sub):
+    """
+    Constrói a matriz 8x8 do subcircuito local usando PennyLane.
+
+    Esta função é diferenciável com Torch, pois theta_sub é torch.Tensor.
+    """
+    U = qml.matrix(pennylane_brickwall_ansatz, wire_order=[0, 1, 2])(theta_sub, wires=(0, 1, 2))
+
+    # Garante dtype complexo compatível com as contrações.
+    if not torch.is_tensor(U):
+        U = torch.tensor(U, dtype=torch.complex128)
+    else:
+        U = U.to(torch.complex128)
 
     return U
 
@@ -319,12 +248,6 @@ def local_brickwall_unitary(theta_sub):
 
 def build_C_from_mps(G0_re, G0_im, G1_re, G1_im, G2_re, G2_im):
     """
-    Constrói C[a,b,c] a partir dos tensores MPS:
-
-        G0[a,r1]
-        G1[r1,b,r2]
-        G2[r2,c]
-
     C[a,b,c] = sum_{r1,r2} G0[a,r1] G1[r1,b,r2] G2[r2,c]
     """
     G0 = G0_re + 1j * G0_im
@@ -333,7 +256,6 @@ def build_C_from_mps(G0_re, G0_im, G1_re, G1_im, G2_re, G2_im):
 
     C = torch.einsum("ar,rbs,sc->abc", G0, G1, G2)
 
-    # Normaliza C para representar um estado.
     C = C / torch.sqrt(torch.sum(torch.abs(C) ** 2) + 1e-12)
 
     return C
@@ -341,19 +263,18 @@ def build_C_from_mps(G0_re, G0_im, G1_re, G1_im, G2_re, G2_im):
 
 def global_state(theta, G0_re, G0_im, G1_re, G1_im, G2_re, G2_im):
     """
-    Reconstrói:
+    Reconstrói o estado global:
 
         |phi> = (U0 ⊗ U1 ⊗ U2) |C_chi>
 
-    sem montar a matriz 512 x 512.
+    onde U0, U1 e U2 vêm de subcircuitos PennyLane.
     """
     C = build_C_from_mps(G0_re, G0_im, G1_re, G1_im, G2_re, G2_im)
 
-    U0 = local_brickwall_unitary(theta[0])
-    U1 = local_brickwall_unitary(theta[1])
-    U2 = local_brickwall_unitary(theta[2])
+    U0 = local_unitary_from_pennylane(theta[0])
+    U1 = local_unitary_from_pennylane(theta[1])
+    U2 = local_unitary_from_pennylane(theta[2])
 
-    # phi[a,b,c] = sum_{i,j,k} U0[a,i] U1[b,j] U2[c,k] C[i,j,k]
     phi = torch.einsum("ai,bj,ck,ijk->abc", U0, U1, U2, C)
 
     psi = phi.reshape(-1)
@@ -363,38 +284,27 @@ def global_state(theta, G0_re, G0_im, G1_re, G1_im, G2_re, G2_im):
 
 
 def expected_energy(theta, G0_re, G0_im, G1_re, G1_im, G2_re, G2_im, energies):
-    """
-    <H> = sum_z |psi_z|^2 H_z.
-    """
     psi = global_state(theta, G0_re, G0_im, G1_re, G1_im, G2_re, G2_im)
     probs = torch.abs(psi) ** 2
     return torch.sum(probs.real * energies)
 
 
 # ============================================================
-# 5. Treino DVQA para um dado chi
+# 5. Treino DVQA
 # ============================================================
 
-def train_once(alpha, beta, A, chi, seed=0, layers=5, epochs=300, lr=0.01, verbose=False):
-    """
-    Treina uma vez o DVQA para alpha, beta, A e chi fixos.
-    """
+def train_once(lam, A, chi, seed=0, layers=2, epochs=80, lr=0.06, verbose=False):
     torch.manual_seed(seed)
     np.random.seed(seed)
 
-    energies = build_energy_vector(alpha, beta, A)
+    energies = build_energy_vector(lam, A)
 
-    # Parâmetros quânticos locais:
-    # K subcircuitos, layers camadas, 3 qubits, 3 rotações.
+    # theta: 3 subcircuitos, layers camadas, 3 qubits, RX/RY/RZ.
     theta = torch.nn.Parameter(
         0.10 * torch.randn(K, layers, sub_n, 3, dtype=torch.float64)
     )
 
-    # Tensores MPS/TT de C.
-    #
-    # G0: (8, chi)
-    # G1: (chi, 8, chi)
-    # G2: (chi, 8)
+    # MPS do tensor C_chi.
     G0_re = torch.nn.Parameter(0.10 * torch.randn(sub_dim, chi, dtype=torch.float64))
     G0_im = torch.nn.Parameter(0.10 * torch.randn(sub_dim, chi, dtype=torch.float64))
 
@@ -441,14 +351,10 @@ def train_once(alpha, beta, A, chi, seed=0, layers=5, epochs=300, lr=0.01, verbo
 
 
 # ============================================================
-# 6. Métricas e leitura das soluções
+# 6. Leitura das probabilidades
 # ============================================================
 
 def top_probability_validity(probs, top_k=20):
-    """
-    Conta quantas das top_k bitstrings mais prováveis são inválidas.
-    Também mede a massa de probabilidade inválida dentro do top_k.
-    """
     idxs = np.argsort(probs)[::-1][:top_k]
 
     valid_count = 0
@@ -479,9 +385,6 @@ def top_probability_validity(probs, top_k=20):
 
 
 def best_valid_from_probs(probs):
-    """
-    Retorna a bitstring válida mais provável.
-    """
     for idx in np.argsort(probs)[::-1]:
         bits = np.array(list(np.binary_repr(int(idx), width=n_qubits)), dtype=int)
 
@@ -495,30 +398,54 @@ def best_valid_from_probs(probs):
 
 
 # ============================================================
-# 7. Experimento 1: variar A
+# 7. Desenho textual do circuito PennyLane
 # ============================================================
 
-alpha_fixed = 1.0
-beta_fixed = 0.6
-chi_fixed = 2
+def print_example_circuit(layers=2):
+    """
+    Mostra o subcircuito local de 3 qubits.
+    """
+    dev = qml.device("default.qubit", wires=3)
+
+    @qml.qnode(dev)
+    def example_qnode(params):
+        pennylane_brickwall_ansatz(params, wires=(0, 1, 2))
+        return qml.state()
+
+    params = np.zeros((layers, 3, 3))
+
+    print("\n=== Subcircuito local PennyLane ===")
+    print(qml.draw(example_qnode)(params))
+
+
+# ============================================================
+# 8. Experimento A: variar A
+# ============================================================
+
+print_example_circuit(layers=2)
 
 A_values = [0.2, 0.5, 1.0, 2.0, 4.0, 8.0, 12.0]
+
+lam_for_A = 0.5
+chi_for_A = 2
 
 invalid_counts = []
 invalid_mass_ratios = []
 valid_mass_ratios = []
 
-print("\n=== Experimento 1: variando A ===")
+print("\n=== Experimento A: variando penalidade A ===")
+print("lambda fixo =", lam_for_A)
+print("chi fixo    =", chi_for_A)
+
 for A in A_values:
     out = train_once(
-        alpha=alpha_fixed,
-        beta=beta_fixed,
+        lam=lam_for_A,
         A=A,
-        chi=chi_fixed,
+        chi=chi_for_A,
         seed=0,
-        layers=5,
-        epochs=300,
-        lr=0.01,
+        layers=2,
+        epochs=60,
+        lr=0.06,
         verbose=False,
     )
 
@@ -537,10 +464,9 @@ plt.figure(figsize=(7, 4))
 plt.plot(A_values, invalid_counts, marker="o")
 plt.xlabel("Penalidade A")
 plt.ylabel("Número de bitstrings inválidas no top 20")
-plt.title("Validade das rotas em função de A")
+plt.title("Rotas inválidas em função de A")
 plt.grid(alpha=0.3)
 plt.tight_layout()
-plt.savefig("validity_vs_A.png", dpi=300)
 plt.show()
 
 plt.figure(figsize=(7, 4))
@@ -552,131 +478,195 @@ plt.title("Probabilidade válida vs inválida em função de A")
 plt.grid(alpha=0.3)
 plt.legend()
 plt.tight_layout()
-plt.savefig("probability_mass_vs_A.png", dpi=300)
 plt.show()
-
-
-# ============================================================
-# 8. Experimento 2: grid alpha x beta com 5 seeds
-# ============================================================
 
 A_best = 8.0
-chi_for_grid = 2
-
-alpha_grid = [0.4, 0.8, 1.2]
-beta_grid = [0.4, 0.8, 1.2]
-seeds = [0, 1, 2, 3, 4]
-
-mean_energy = np.zeros((len(alpha_grid), len(beta_grid)))
-std_energy = np.zeros_like(mean_energy)
-
-print("\n=== Experimento 2: grid alpha x beta com 5 seeds ===")
-for ia, alpha in enumerate(alpha_grid):
-    for ib, beta in enumerate(beta_grid):
-        vals = []
-
-        for seed in seeds:
-            out = train_once(
-                alpha=alpha,
-                beta=beta,
-                A=A_best,
-                chi=chi_for_grid,
-                seed=seed,
-                layers=5,
-                epochs=300,
-                lr=0.01,
-                verbose=False,
-            )
-            vals.append(out["loss"])
-
-        mean_energy[ia, ib] = np.mean(vals)
-        std_energy[ia, ib] = np.std(vals)
-
-        print(
-            f"alpha={alpha:.2f}, beta={beta:.2f} | "
-            f"energia média = {mean_energy[ia, ib]:.6f} ± {std_energy[ia, ib]:.6f}"
-        )
-
-plt.figure(figsize=(6, 5))
-plt.imshow(mean_energy, origin="lower", aspect="auto")
-plt.colorbar(label="Energia final média")
-
-plt.xticks(range(len(beta_grid)), beta_grid)
-plt.yticks(range(len(alpha_grid)), alpha_grid)
-
-plt.xlabel("beta")
-plt.ylabel("alpha")
-plt.title("Heatmap alpha x beta: energia média sobre 5 seeds")
-
-for ia in range(len(alpha_grid)):
-    for ib in range(len(beta_grid)):
-        plt.text(
-            ib,
-            ia,
-            f"{mean_energy[ia, ib]:.3f}",
-            ha="center",
-            va="center",
-            color="white",
-            fontsize=10,
-        )
-
-plt.tight_layout()
-plt.savefig("alpha_beta_heatmap.png", dpi=300)
-plt.show()
-
-best_pos = np.unravel_index(np.argmin(mean_energy), mean_energy.shape)
-best_alpha = alpha_grid[best_pos[0]]
-best_beta = beta_grid[best_pos[1]]
-
-print("\nMelhor par alpha,beta:")
-print("alpha =", best_alpha)
-print("beta  =", best_beta)
-print("A     =", A_best)
 
 
 # ============================================================
-# 9. Experimento 3: chi x resultado final médio sobre 5 seeds
+# 9. Experimento B: curva lambda
+# ============================================================
+
+lambda_values = np.linspace(0.0, 1.0, 6)
+chi_for_lambda = 2
+
+lambda_energy_mean = []
+lambda_energy_std = []
+lambda_time_mean = []
+lambda_carbon_mean = []
+lambda_prob_mean = []
+lambda_invalid_mean = []
+
+print("\n=== Experimento B: variando lambda ===")
+print("alpha=lambda, beta=1-lambda")
+print("A fixo   =", A_best)
+print("chi fixo =", chi_for_lambda)
+
+for lam in lambda_values:
+    losses = []
+    times = []
+    carbons = []
+    probs_valid = []
+    invalids = []
+    route_texts = []
+
+    for seed in seeds:
+        out = train_once(
+            lam=float(lam),
+            A=A_best,
+            chi=chi_for_lambda,
+            seed=seed,
+            layers=2,
+            epochs=70,
+            lr=0.05,
+            verbose=False,
+        )
+
+        losses.append(out["loss"])
+
+        vc, ic, vr, ir = top_probability_validity(out["probs"], top_k=20)
+        invalids.append(ic)
+
+        idx, bits, route, prob, ttot, ctot = best_valid_from_probs(out["probs"])
+        times.append(ttot)
+        carbons.append(ctot)
+        probs_valid.append(prob)
+        route_texts.append(" -> ".join(names[i] for i in route))
+
+    lambda_energy_mean.append(np.mean(losses))
+    lambda_energy_std.append(np.std(losses))
+    lambda_time_mean.append(np.mean(times))
+    lambda_carbon_mean.append(np.mean(carbons))
+    lambda_prob_mean.append(np.mean(probs_valid))
+    lambda_invalid_mean.append(np.mean(invalids))
+
+    print(
+        f"lambda={lam:.2f} | "
+        f"E média={np.mean(losses):.4f} | "
+        f"tempo médio={np.mean(times):.1f} | "
+        f"carbono médio={np.mean(carbons):.1f} | "
+        f"prob válida média={np.mean(probs_valid):.3f} | "
+        f"rota seed0={route_texts[0]}"
+    )
+
+lambda_energy_mean = np.array(lambda_energy_mean)
+lambda_energy_std = np.array(lambda_energy_std)
+lambda_time_mean = np.array(lambda_time_mean)
+lambda_carbon_mean = np.array(lambda_carbon_mean)
+lambda_prob_mean = np.array(lambda_prob_mean)
+lambda_invalid_mean = np.array(lambda_invalid_mean)
+
+plt.figure(figsize=(7, 4))
+plt.errorbar(
+    lambda_values,
+    lambda_energy_mean,
+    yerr=lambda_energy_std,
+    marker="o",
+    capsize=4,
+    linewidth=2,
+)
+plt.xlabel(r"$\lambda$  |  $\alpha=\lambda$, $\beta=1-\lambda$")
+plt.ylabel("Energia final média")
+plt.title("Energia variacional final em função da preferência")
+plt.grid(alpha=0.3)
+plt.tight_layout()
+plt.show()
+
+plt.figure(figsize=(7, 4))
+plt.plot(lambda_values, lambda_time_mean, marker="o")
+plt.xlabel(r"$\lambda$  |  0 = tempo, 1 = carbono")
+plt.ylabel("Tempo médio da rota válida")
+plt.title("Tempo da rota em função da preferência")
+plt.grid(alpha=0.3)
+plt.tight_layout()
+plt.show()
+
+plt.figure(figsize=(7, 4))
+plt.plot(lambda_values, lambda_carbon_mean, marker="o")
+plt.xlabel(r"$\lambda$  |  0 = tempo, 1 = carbono")
+plt.ylabel("Carbono médio da rota válida")
+plt.title("Carbono da rota em função da preferência")
+plt.grid(alpha=0.3)
+plt.tight_layout()
+plt.show()
+
+plt.figure(figsize=(7, 4))
+plt.plot(lambda_values, lambda_prob_mean, marker="o")
+plt.xlabel(r"$\lambda$")
+plt.ylabel("Probabilidade média")
+plt.title("Probabilidade da rota válida mais provável")
+plt.grid(alpha=0.3)
+plt.tight_layout()
+plt.show()
+
+plt.figure(figsize=(7, 4))
+plt.plot(lambda_values, lambda_invalid_mean, marker="o")
+plt.xlabel(r"$\lambda$")
+plt.ylabel("Número médio de inválidas no top 20")
+plt.title("Inválidas no top 20 em função da preferência")
+plt.grid(alpha=0.3)
+plt.tight_layout()
+plt.show()
+
+# Escolha manual: compromisso equilibrado.
+lambda_best = 0.5
+
+print("\nLambda escolhido:")
+print("lambda =", lambda_best)
+print("alpha  =", lambda_best)
+print("beta   =", 1.0 - lambda_best)
+
+
+# ============================================================
+# 10. Experimento C: variar chi
 # ============================================================
 
 chi_values = [1, 2, 3, 4, 6]
 
-chi_mean_energy = []
-chi_std_energy = []
+chi_energy_mean = []
+chi_energy_std = []
+chi_prob_mean = []
 
-print("\n=== Experimento 3: variando chi com melhor alpha,beta ===")
+print("\n=== Experimento C: variando chi ===")
 for chi in chi_values:
-    vals = []
+    losses = []
+    probs_valid = []
 
     for seed in seeds:
         out = train_once(
-            alpha=best_alpha,
-            beta=best_beta,
+            lam=lambda_best,
             A=A_best,
             chi=chi,
             seed=seed,
-            layers=5,
-            epochs=300,
-            lr=0.01,
+            layers=2,
+            epochs=80,
+            lr=0.05,
             verbose=False,
         )
-        vals.append(out["loss"])
 
-    mean_val = np.mean(vals)
-    std_val = np.std(vals)
+        losses.append(out["loss"])
 
-    chi_mean_energy.append(mean_val)
-    chi_std_energy.append(std_val)
+        idx, bits, route, prob, ttot, ctot = best_valid_from_probs(out["probs"])
+        probs_valid.append(prob)
 
-    print(f"chi={chi:2d} | energia final média = {mean_val:.6f} ± {std_val:.6f}")
+    chi_energy_mean.append(np.mean(losses))
+    chi_energy_std.append(np.std(losses))
+    chi_prob_mean.append(np.mean(probs_valid))
 
-chi_mean_energy = np.array(chi_mean_energy)
-chi_std_energy = np.array(chi_std_energy)
+    print(
+        f"chi={chi:2d} | "
+        f"E média={np.mean(losses):.4f} ± {np.std(losses):.4f} | "
+        f"prob válida média={np.mean(probs_valid):.3f}"
+    )
+
+chi_energy_mean = np.array(chi_energy_mean)
+chi_energy_std = np.array(chi_energy_std)
 
 plt.figure(figsize=(7, 4))
 plt.errorbar(
     chi_values,
-    chi_mean_energy,
-    yerr=chi_std_energy,
+    chi_energy_mean,
+    yerr=chi_energy_std,
     marker="o",
     capsize=4,
     linewidth=2,
@@ -686,29 +676,40 @@ plt.ylabel("Energia final média")
 plt.title("Resultado final em função de chi - média sobre 5 seeds")
 plt.grid(alpha=0.3)
 plt.tight_layout()
-plt.savefig("energy_vs_chi.png", dpi=300)
 plt.show()
 
-best_chi = chi_values[int(np.argmin(chi_mean_energy))]
+plt.figure(figsize=(7, 4))
+plt.plot(chi_values, chi_prob_mean, marker="o")
+plt.xlabel("Bond dimension chi")
+plt.ylabel("Probabilidade média da melhor rota válida")
+plt.title("Probabilidade da rota válida em função de chi")
+plt.grid(alpha=0.3)
+plt.tight_layout()
+plt.show()
 
-print("\nMelhor chi:")
+best_chi = chi_values[int(np.argmin(chi_energy_mean))]
+
+print("\nChi escolhido:")
 print("chi =", best_chi)
 
 
 # ============================================================
-# 10. Treino final com melhor alpha, beta e chi
+# 11. Treino final
 # ============================================================
 
-print("\n=== Treino final com melhor alpha, beta e chi ===")
+print("\n=== Treino final ===")
+print("lambda =", lambda_best)
+print("A      =", A_best)
+print("chi    =", best_chi)
+
 final = train_once(
-    alpha=best_alpha,
-    beta=best_beta,
+    lam=lambda_best,
     A=A_best,
     chi=best_chi,
     seed=0,
-    layers=5,
-    epochs=300,
-    lr=0.01,
+    layers=2,
+    epochs=160,
+    lr=0.05,
     verbose=True,
 )
 
@@ -722,8 +723,23 @@ print("probabilidade:", prob)
 print("rota:", " -> ".join(names[i] for i in route))
 print("tempo:", ttot, "min")
 print("carbono:", ctot, "kg")
+print("lambda:", lambda_best, "| alpha:", lambda_best, "| beta:", 1.0 - lambda_best)
+print("A:", A_best, "| chi:", best_chi)
 
-# Loss final.
+e_exact, bits_exact, route_exact, t_exact, c_exact = brute_force_best_valid(lambda_best, A_best)
+
+print("\n=== Melhor rota válida clássica para este lambda ===")
+print("bitstring:", "".join(map(str, bits_exact)))
+print("energia:", e_exact)
+print("rota:", " -> ".join(names[i] for i in route_exact))
+print("tempo:", t_exact, "min")
+print("carbono:", c_exact, "kg")
+
+
+# ============================================================
+# 12. Plots finais
+# ============================================================
+
 plt.figure(figsize=(7, 4))
 plt.plot(final["loss_hist"], linewidth=2)
 plt.xlabel("Época")
@@ -731,18 +747,16 @@ plt.ylabel("Energia esperada")
 plt.title("Loss do treino final")
 plt.grid(alpha=0.3)
 plt.tight_layout()
-plt.savefig("final_loss.png", dpi=300)
 plt.show()
 
-# Probabilidades finais.
 top_k = 20
 top_idx = np.argsort(probs)[::-1][:top_k]
 
 labels = []
 values = []
 
-for idx in top_idx:
-    b = np.array(list(np.binary_repr(int(idx), width=n_qubits)), dtype=int)
+for idx_top in top_idx:
+    b = np.array(list(np.binary_repr(int(idx_top), width=n_qubits)), dtype=int)
     bitstring = "".join(map(str, b))
 
     if is_valid(b):
@@ -753,7 +767,7 @@ for idx in top_idx:
         label = bitstring + "\ninválida"
 
     labels.append(label)
-    values.append(probs[idx])
+    values.append(probs[idx_top])
 
 plt.figure(figsize=(13, 5))
 plt.bar(range(top_k), values)
@@ -762,13 +776,7 @@ plt.ylabel("Probabilidade")
 plt.title("Probabilidades finais das top bitstrings - 9 qubits")
 plt.grid(axis="y", alpha=0.3)
 plt.tight_layout()
-plt.savefig("final_probabilities.png", dpi=300)
 plt.show()
-
-
-# ============================================================
-# 11. Plot simples da rota final
-# ============================================================
 
 coords = {
     0: (0.0, 0.0),
@@ -797,5 +805,4 @@ plt.title("Rota final: " + " -> ".join(names[i] for i in route))
 plt.axis("equal")
 plt.grid(alpha=0.3)
 plt.tight_layout()
-plt.savefig("final_route.png", dpi=300)
 plt.show()
