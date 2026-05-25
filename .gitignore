@@ -1,0 +1,75 @@
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Editores / IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Ambientes virtuais
+.env
+.venv/
+venv/
+env/
+
+# Variáveis de ambiente e segredos
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Node / JavaScript
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build / distribuição
+dist/
+build/
+*.egg-info/
+target/
+out/
+
+# Logs
+*.log
+logs/
+
+# Cache
+.cache/
+tmp/
+temp/
+
+# Arquivos grandes / dados locais
+data/
+datasets/
+outputs/
+results/
+models/
+checkpoints/
+
+# Arquivos compactados
+*.zip
+*.tar
+*.tar.gz
+*.rar
+
+# Arquivos de configuração local
+config.local.*
+settings.local.*
