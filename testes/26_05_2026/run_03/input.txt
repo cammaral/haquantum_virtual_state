@@ -1,0 +1,11 @@
+============================================================
+      DVQA MOBILIDADE - PARÂMETROS DE ENTRADA DO TESTE     
+============================================================
+Data e Hora da Execução : 26/05/2026 20:15:51
+Fator Lambda (Preferência) : 0.5 (alpha=0.5, beta=0.5)
+Penalidade de Restrição (A) : 8.0
+Bond Dimension Clássica (chi) : 11
+Camadas do Ansatz Quântico : 2
+Máximo de Épocas/Iterações : 2500
+Learning Rate Inicial (Clássico) : 0.01
+============================================================

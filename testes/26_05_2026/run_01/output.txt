@@ -1,0 +1,91 @@
+=== Subcircuito local Ket ===
+
+=== Experimento A: variando penalidade A ===
+lambda fixo = 0.5
+chi fixo    = 2
+A= 0.20 | inválidas top20 = 10/20 | massa inválida top20 = 1.000
+A= 0.50 | inválidas top20 =  9/20 | massa inválida top20 = 0.952
+A= 1.00 | inválidas top20 =  9/20 | massa inválida top20 = 0.793
+A= 2.00 | inválidas top20 =  9/20 | massa inválida top20 = 0.574
+A= 4.00 | inválidas top20 =  8/20 | massa inválida top20 = 0.665
+A= 8.00 | inválidas top20 =  9/20 | massa inválida top20 = 0.462
+A=12.00 | inválidas top20 =  9/20 | massa inválida top20 = 0.454
+
+=== Experimento B: variando lambda ===
+alpha=lambda, beta=1-lambda
+A fixo   = 8.0
+chi fixo = 2
+lambda=0.00 | E média=20.1707 | tempo médio=58.0 | carbono médio=63.0 | prob válida média=0.344 | rota seed0=Hub -> P2 -> P3 -> P1 -> Hub
+lambda=0.20 | E média=16.7564 | tempo médio=62.0 | carbono médio=57.0 | prob válida média=0.336 | rota seed0=Hub -> P2 -> P3 -> P1 -> Hub
+lambda=0.40 | E média=20.7593 | tempo médio=62.0 | carbono médio=57.0 | prob válida média=0.340 | rota seed0=Hub -> P2 -> P3 -> P1 -> Hub
+lambda=0.60 | E média=18.5874 | tempo médio=62.0 | carbono médio=57.0 | prob válida média=0.410 | rota seed0=Hub -> P1 -> P3 -> P2 -> Hub
+lambda=0.80 | E média=20.9300 | tempo médio=62.0 | carbono médio=57.0 | prob válida média=0.364 | rota seed0=Hub -> P1 -> P3 -> P2 -> Hub
+lambda=1.00 | E média=16.3957 | tempo médio=60.0 | carbono médio=64.0 | prob válida média=0.369 | rota seed0=Hub -> P1 -> P3 -> P2 -> Hub
+
+Lambda escolhido:
+lambda = 0.5
+alpha  = 0.5
+beta   = 0.5
+
+=== Experimento C: variando chi ===
+chi= 1 | E média=16.2520 ± 7.2973 | prob válida média=0.522
+chi= 2 | E média=20.9773 ± 5.0242 | prob válida média=0.353
+chi= 3 | E média=18.2281 ± 3.2761 | prob válida média=0.319
+/home/ruan/code/haquantum_virtual_state/.venv/lib/python3.12/site-packages/scipy/_lib/pyprima/common/preproc.py:68: UserWarning: COBYLA: Invalid MAXFUN; it should be at least num_vars + 2; it is set to 697
+  warn(f'{solver}: Invalid MAXFUN; it should be at least {min_maxfun_str}; it is set to {maxfun}')
+chi= 5 | E média=27.0797 ± 6.0966 | prob válida média=0.202
+/home/ruan/code/haquantum_virtual_state/.venv/lib/python3.12/site-packages/scipy/_lib/pyprima/common/preproc.py:68: UserWarning: COBYLA: Invalid MAXFUN; it should be at least num_vars + 2; it is set to 1145
+  warn(f'{solver}: Invalid MAXFUN; it should be at least {min_maxfun_str}; it is set to {maxfun}')
+chi= 7 | E média=26.0817 ± 5.0112 | prob válida média=0.215
+/home/ruan/code/haquantum_virtual_state/.venv/lib/python3.12/site-packages/scipy/_lib/pyprima/common/preproc.py:68: UserWarning: COBYLA: Invalid MAXFUN; it should be at least num_vars + 2; it is set to 2425
+  warn(f'{solver}: Invalid MAXFUN; it should be at least {min_maxfun_str}; it is set to {maxfun}')
+chi=11 | E média=26.1232 ± 5.6271 | prob válida média=0.242
+
+Chi escolhido:
+chi = 1
+
+=== Treino final ===
+lambda = 0.5
+A      = 8.0
+chi    = 1
+Iteração 0020 | loss = 33.103604
+Iteração 0040 | loss = 29.469596
+Iteração 0060 | loss = 27.647566
+Iteração 0080 | loss = 25.996634
+Iteração 0100 | loss = 23.542485
+Iteração 0120 | loss = 23.749771
+Iteração 0140 | loss = 22.244751
+Iteração 0160 | loss = 31.045017
+Iteração 0180 | loss = 28.504954
+Iteração 0200 | loss = 19.299243
+Iteração 0220 | loss = 43.783548
+Iteração 0240 | loss = 40.308822
+Iteração 0260 | loss = 16.820557
+Iteração 0280 | loss = 16.955342
+Iteração 0300 | loss = 16.477135
+Iteração 0320 | loss = 14.904590
+Iteração 0340 | loss = 13.544585
+Iteração 0360 | loss = 13.879461
+Iteração 0380 | loss = 13.784481
+Iteração 0400 | loss = 17.741035
+Iteração 0420 | loss = 19.991816
+Iteração 0440 | loss = 22.197819
+Iteração 0460 | loss = 16.555981
+Iteração 0480 | loss = 10.694850
+Iteração 0500 | loss = 11.819816
+
+=== Melhor rota válida encontrada ===
+bitstring: 010001100
+probabilidade: 0.5628779715763994
+rota: Hub -> P2 -> P3 -> P1 -> Hub
+tempo: 50.0 min
+carbono: 75.0 kg
+lambda: 0.5 | alpha: 0.5 | beta: 0.5
+A: 8.0 | chi: 1
+
+=== Melhor rota válida clássica para este lambda ===
+bitstring: 001010100
+energia: 2.15
+rota: Hub -> P3 -> P2 -> P1 -> Hub
+tempo: 70.0 min
+carbono: 45.0 kg

@@ -22,9 +22,6 @@
 #
 # ============================================================
 
-import os
-import sys
-from datetime import datetime
 import numpy as np
 import torch
 import pennylane as qml
@@ -33,71 +30,6 @@ import scipy.optimize as opt
 from ket import *
 
 torch.set_default_dtype(torch.float64)
-
-import os
-import sys
-from datetime import datetime
-
-# ============================================================
-# 0. Configuração de Logs e Pastas de Salvamento
-# ============================================================
-
-# 1. Define a data atual seguindo o formato solicitado (Ex: 26_05_2026)
-# Se o seu modelo usar hífens (26-05-2026), mude para: "%d-%m-%Y"
-formato_data = datetime.now().strftime("%d_%m_%Y")
-
-# Diretório base onde todos os testes serão concentrados
-pasta_testes = "testes"
-base_dir = os.path.join(pasta_testes, formato_data)
-os.makedirs(base_dir, exist_ok=True)
-
-# 2. Encontra de forma incremental o próximo número de execução (run_01, run_02...)
-run_idx = 1
-while True:
-    run_dir = os.path.join(base_dir, f"run_{run_idx:02d}")
-    if not os.path.exists(run_dir):
-        os.makedirs(run_dir)
-        break
-    run_idx += 1
-
-print(f"\n[INFO] Diretório de salvamento definido: {run_dir}\n")
-
-
-# 3. Classe Logger para duplicar a saída do sys.stdout
-# Tudo que for printado irá para o terminal e será gravado no arquivo output.txt
-class Logger:
-    def __init__(self, filepath):
-        self.terminal = sys.stdout
-        self.log = open(filepath, "w", encoding="utf-8")
-
-    def write(self, message):
-        self.terminal.write(message)
-        self.log.write(message)
-
-    def flush(self):
-        self.terminal.flush()
-        self.log.flush()
-
-# Ativa o interceptador de prints
-sys.stdout = Logger(os.path.join(run_dir, "output.txt"))
-
-
-# 4. Função para gerar o relatório consolidado de hiperparâmetros de entrada
-def save_inputs(lam, A, chi, layers, epochs, lr):
-    input_path = os.path.join(run_dir, "input.txt")
-    with open(input_path, "w", encoding="utf-8") as f:
-        f.write("============================================================\n")
-        f.write("      DVQA MOBILIDADE - PARÂMETROS DE ENTRADA DO TESTE     \n")
-        f.write("============================================================\n")
-        f.write(f"Data e Hora da Execução : {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n")
-        f.write(f"Fator Lambda (Preferência) : {lam} (alpha={lam}, beta={1.0-lam})\n")
-        f.write(f"Penalidade de Restrição (A) : {A}\n")
-        f.write(f"Bond Dimension Clássica (chi) : {chi}\n")
-        f.write(f"Camadas do Ansatz Quântico : {layers}\n")
-        f.write(f"Máximo de Épocas/Iterações : {epochs}\n")
-        f.write(f"Learning Rate Inicial (Clássico) : {lr}\n")
-        f.write("============================================================\n")
-
 
 # ============================================================
 # 1. Dados do problema
@@ -136,8 +68,8 @@ global_dim = 2 ** n_qubits
 seeds = [0, 1, 2, 3, 4]
 
 
-epochs= 2500
-LAYERS = 2
+epochs= 500
+LAYERS = 5
 LR = 0.01
 
 # ============================================================
@@ -312,6 +244,47 @@ def local_unitary_from_ket(theta_sub):
 
     return U_torch
 
+# def pennylane_brickwall_ansatz(theta_sub, wires=(0, 1, 2)):
+#     """
+#     Subcircuito brickwall local de 3 qubits em PennyLane.
+
+#     theta_sub shape:
+#         (layers, 3, 3)
+
+#     theta_sub[l,w,0] -> RX
+#     theta_sub[l,w,1] -> RY
+#     theta_sub[l,w,2] -> RZ
+#     """
+#     layers = theta_sub.shape[0]
+
+#     for l in range(layers):
+#         for j, wire in enumerate(wires):
+#             qml.RX(theta_sub[l, j, 0], wires=wire)
+#             qml.RY(theta_sub[l, j, 1], wires=wire)
+#             qml.RZ(theta_sub[l, j, 2], wires=wire)
+
+#         # Brickwall local:
+#         qml.CNOT(wires=[wires[0], wires[1]])
+#         qml.CNOT(wires=[wires[1], wires[2]])
+
+
+# def local_unitary_from_pennylane(theta_sub):
+#     """
+#     Constrói a matriz 8x8 do subcircuito local usando PennyLane.
+
+#     Esta função é diferenciável com Torch, pois theta_sub é torch.Tensor.
+#     """
+#     U = qml.matrix(pennylane_brickwall_ansatz, wire_order=[0, 1, 2])(theta_sub, wires=(0, 1, 2))
+
+#     # Garante dtype complexo compatível com as contrações.
+#     if not torch.is_tensor(U):
+#         U = torch.tensor(U, dtype=torch.complex128)
+#     else:
+#         U = U.to(torch.complex128)
+
+#     return U
+
+
 # ============================================================
 # 4. Tensor C em MPS/TT com bond dimension chi
 # ============================================================
@@ -341,6 +314,9 @@ def global_state(theta, G0_re, G0_im, G1_re, G1_im, G2_re, G2_im):
     """
     C = build_C_from_mps(G0_re, G0_im, G1_re, G1_im, G2_re, G2_im)
 
+    # U0 = local_unitary_from_pennylane(theta[0])
+    # U1 = local_unitary_from_pennylane(theta[1])
+    # U2 = local_unitary_from_pennylane(theta[2])
     U0 = local_unitary_from_ket(theta[0])
     U1 = local_unitary_from_ket(theta[1])
     U2 = local_unitary_from_ket(theta[2])
@@ -368,6 +344,56 @@ def train_once(lam, A, chi, seed=0, layers=5, epochs=epochs, lr=0.01, verbose=Fa
     np.random.seed(seed)
 
     energies = build_energy_vector(lam, A)
+
+    # # theta: 3 subcircuitos, layers camadas, 3 qubits, RX/RY/RZ.
+    # theta = torch.nn.Parameter(
+    #     0.10 * torch.randn(K, layers, sub_n, 3, dtype=torch.float64)
+    # )
+
+    # # MPS do tensor C_chi.
+    # G0_re = torch.nn.Parameter(0.10 * torch.randn(sub_dim, chi, dtype=torch.float64))
+    # G0_im = torch.nn.Parameter(0.10 * torch.randn(sub_dim, chi, dtype=torch.float64))
+
+    # G1_re = torch.nn.Parameter(0.10 * torch.randn(chi, sub_dim, chi, dtype=torch.float64))
+    # G1_im = torch.nn.Parameter(0.10 * torch.randn(chi, sub_dim, chi, dtype=torch.float64))
+
+    # G2_re = torch.nn.Parameter(0.10 * torch.randn(chi, sub_dim, dtype=torch.float64))
+    # G2_im = torch.nn.Parameter(0.10 * torch.randn(chi, sub_dim, dtype=torch.float64))
+
+    # params = [theta, G0_re, G0_im, G1_re, G1_im, G2_re, G2_im]
+    # opt = torch.optim.Adam(params, lr=lr)
+
+    # loss_hist = []
+
+    # for ep in range(epochs):
+    #     opt.zero_grad()
+
+    #     loss = expected_energy(
+    #         theta,
+    #         G0_re, G0_im,
+    #         G1_re, G1_im,
+    #         G2_re, G2_im,
+    #         energies,
+    #     )
+
+    #     loss.backward()
+    #     opt.step()
+
+    #     loss_value = float(loss.detach())
+    #     loss_hist.append(loss_value)
+
+    #     if verbose and (ep % 20 == 0 or ep == epochs - 1):
+    #         print(f"epoch {ep:04d} | loss = {loss_value:.6f}")
+
+    # with torch.no_grad():
+    #     psi = global_state(theta, G0_re, G0_im, G1_re, G1_im, G2_re, G2_im)
+    #     probs = (torch.abs(psi) ** 2).real.cpu().numpy()
+
+    # return {
+    #     "loss": loss_hist[-1],
+    #     "loss_hist": loss_hist,
+    #     "probs": probs,
+    # }
 
     # Inicialização via NumPy
     theta_init = 0.10 * np.random.randn(K, layers, sub_n, 3)
@@ -442,15 +468,14 @@ def train_once(lam, A, chi, seed=0, layers=5, epochs=epochs, lr=0.01, verbose=Fa
         return val
     
     # Otimização Livre de Gradiente
-    # res = opt.minimize(objective, initial_params, method='COBYLA', options={'maxiter': epochs, 'rhobeg': 0.1})]
-    res = opt.minimize(objective, initial_params, method='Powell', options={'maxiter': epochs, 'disp': False})
+    res = opt.minimize(objective, initial_params, method='COBYLA', options={'maxiter': epochs})
 
     # Extração dos resultados com os melhores parâmetros encontrados
     b_theta, b_G0_re, b_G0_im, b_G1_re, b_G1_im, b_G2_re, b_G2_im = unpack_params(res.x)
 
     with torch.no_grad():
         psi = global_state(b_theta, b_G0_re, b_G0_im, b_G1_re, b_G1_im, b_G2_re, b_G2_im)
-        probs = (torch.abs(psi) ** 2).real.cpu().numspy()
+        probs = (torch.abs(psi) ** 2).real.cpu().numpy()
 
     return {
         "loss": loss_hist[-1],
@@ -508,6 +533,22 @@ def best_valid_from_probs(probs):
 # ============================================================
 # 7. Desenho textual do circuito PennyLane
 # ============================================================
+
+# def print_example_circuit(layers=5):
+#     """
+#     Mostra o subcircuito local de 3 qubits.
+#     """
+#     dev = qml.device("default.qubit", wires=3)
+
+#     @qml.qnode(dev)
+#     def example_qnode(params):
+#         pennylane_brickwall_ansatz(params, wires=(0, 1, 2))
+#         return qml.state()
+
+#     params = np.zeros((layers, 3, 3))
+
+#     print("\n=== Subcircuito local PennyLane ===")
+#     print(qml.draw(example_qnode)(params))
 
 def print_example_circuit(layers=5):
     """
@@ -574,8 +615,8 @@ plt.ylabel("Número de bitstrings inválidas no top 20")
 plt.title("Rotas inválidas em função de A")
 plt.grid(alpha=0.3)
 plt.tight_layout()
-plt.savefig(os.path.join(run_dir, "A_invalid_count.png"), dpi=300)
-# plt.show()
+plt.savefig("A_invalid_count.png", dpi=300)
+plt.show()
 
 plt.figure(figsize=(7, 4))
 plt.plot(A_values, valid_mass_ratios, marker="o", label="massa válida")
@@ -586,8 +627,8 @@ plt.title("Probabilidade válida vs inválida em função de A")
 plt.grid(alpha=0.3)
 plt.legend()
 plt.tight_layout()
-plt.savefig(os.path.join(run_dir, "A_valid_invalid_mass.png"), dpi=300)
-# plt.show()
+plt.savefig("A_valid_invalid_mass.png", dpi=300)
+plt.show()
 
 A_best = 8.0
 
@@ -679,8 +720,8 @@ plt.ylabel("Energia final média")
 plt.title("Energia variacional final em função da preferência")
 plt.grid(alpha=0.3)
 plt.tight_layout()
-plt.savefig(os.path.join(run_dir, "lambda_energy.png"), dpi=300)
-# plt.show()
+plt.savefig("lambda_energy.png", dpi=300)
+plt.show()
 
 plt.figure(figsize=(7, 4))
 plt.plot(lambda_values, lambda_time_mean, marker="o")
@@ -689,8 +730,8 @@ plt.ylabel("Tempo médio da rota válida")
 plt.title("Tempo da rota em função da preferência")
 plt.grid(alpha=0.3)
 plt.tight_layout()
-plt.savefig(os.path.join(run_dir, "lambda_time.png"), dpi=300)
-# plt.show()
+plt.savefig("lambda_time.png", dpi=300)
+plt.show()
 
 plt.figure(figsize=(7, 4))
 plt.plot(lambda_values, lambda_carbon_mean, marker="o")
@@ -699,8 +740,8 @@ plt.ylabel("Carbono médio da rota válida")
 plt.title("Carbono da rota em função da preferência")
 plt.grid(alpha=0.3)
 plt.tight_layout()
-plt.savefig(os.path.join(run_dir, "lambda_carbon.png"), dpi=300)
-# plt.show()
+plt.savefig("lambda_carbon.png", dpi=300)
+plt.show()
 
 plt.figure(figsize=(7, 4))
 plt.plot(lambda_values, lambda_prob_mean, marker="o")
@@ -709,8 +750,8 @@ plt.ylabel("Probabilidade média")
 plt.title("Probabilidade da rota válida mais provável")
 plt.grid(alpha=0.3)
 plt.tight_layout()
-plt.savefig(os.path.join(run_dir, "lambda_prob.png"), dpi=300)
-# plt.show()
+plt.savefig("lambda_prob.png", dpi=300)
+plt.show()
 
 plt.figure(figsize=(7, 4))
 plt.plot(lambda_values, lambda_invalid_mean, marker="o")
@@ -719,8 +760,8 @@ plt.ylabel("Número médio de inválidas no top 20")
 plt.title("Inválidas no top 20 em função da preferência")
 plt.grid(alpha=0.3)
 plt.tight_layout()
-plt.savefig(os.path.join(run_dir, "lambda_invalids.png"), dpi=300)
-# plt.show()
+plt.savefig("lambda_invalids.png", dpi=300)
+plt.show()
 
 # Escolha manual: compromisso equilibrado.
 lambda_best = 0.5
@@ -790,8 +831,8 @@ plt.ylabel("Energia final média")
 plt.title("Resultado final em função de chi - média sobre 5 seeds")
 plt.grid(alpha=0.3)
 plt.tight_layout()
-plt.savefig(os.path.join(run_dir, "chi_energy.png"), dpi=300)
-# plt.show()
+plt.savefig("chi_energy.png", dpi=300)
+plt.show()
 
 plt.figure(figsize=(7, 4))
 plt.plot(chi_values, chi_prob_mean, marker="o")
@@ -800,8 +841,8 @@ plt.ylabel("Probabilidade média da melhor rota válida")
 plt.title("Probabilidade da rota válida em função de chi")
 plt.grid(alpha=0.3)
 plt.tight_layout()
-plt.savefig(os.path.join(run_dir, "chi_prob.png"), dpi=300)
-# plt.show()
+plt.savefig("chi_prob.png", dpi=300)
+plt.show()
 
 best_chi = chi_values[int(np.argmin(chi_energy_mean))]
 
@@ -863,8 +904,8 @@ plt.ylabel("Energia esperada")
 plt.title("Loss do treino final")
 plt.grid(alpha=0.3)
 plt.tight_layout()
-plt.savefig(os.path.join(run_dir, "loss_final.png"), dpi=300)
-# plt.show()
+plt.savefig("loss_final.png", dpi=300)
+plt.show()
 
 top_k = 20
 top_idx = np.argsort(probs)[::-1][:top_k]
@@ -893,8 +934,8 @@ plt.ylabel("Probabilidade")
 plt.title("Probabilidades finais das top bitstrings - 9 qubits")
 plt.grid(axis="y", alpha=0.3)
 plt.tight_layout()
-plt.savefig(os.path.join(run_dir, "top_bitstrings.png"), dpi=300)
-# plt.show()
+plt.savefig("top_bitstrings.png", dpi=300)
+plt.show()
 
 coords = {
     0: (0.0, 0.0),
@@ -923,8 +964,5 @@ plt.title("Rota final: " + " -> ".join(names[i] for i in route))
 plt.axis("equal")
 plt.grid(alpha=0.3)
 plt.tight_layout()
-plt.savefig(os.path.join(run_dir, "rota_final.png"), dpi=300)
-# plt.show()
-
-save_inputs(lambda_best, A_best, best_chi, LAYERS, epochs, LR)
-print("\n[Execução finalizada com sucesso. Logs e gráficos salvos.]")
+plt.savefig("rota_final.png", dpi=300)
+plt.show()

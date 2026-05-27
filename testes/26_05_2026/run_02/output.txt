@@ -1,0 +1,162 @@
+=== Subcircuito local Ket ===
+
+=== Experimento A: variando penalidade A ===
+lambda fixo = 0.5
+chi fixo    = 2
+A= 0.20 | inválidas top20 = 10/20 | massa inválida top20 = 1.000
+A= 0.50 | inválidas top20 = 10/20 | massa inválida top20 = 1.000
+A= 1.00 | inválidas top20 =  9/20 | massa inválida top20 = 0.997
+A= 2.00 | inválidas top20 =  8/20 | massa inválida top20 = 0.004
+A= 4.00 | inválidas top20 =  8/20 | massa inválida top20 = 0.000
+A= 8.00 | inválidas top20 =  8/20 | massa inválida top20 = 0.000
+A=12.00 | inválidas top20 =  8/20 | massa inválida top20 = 0.000
+
+=== Experimento B: variando lambda ===
+alpha=lambda, beta=1-lambda
+A fixo   = 8.0
+chi fixo = 2
+lambda=0.00 | E média=2.3303 | tempo médio=58.0 | carbono médio=79.0 | prob válida média=0.998 | rota seed0=Hub -> P3 -> P1 -> P2 -> Hub
+lambda=0.20 | E média=2.3373 | tempo médio=56.0 | carbono médio=78.0 | prob válida média=0.967 | rota seed0=Hub -> P3 -> P1 -> P2 -> Hub
+lambda=0.40 | E média=2.4140 | tempo médio=60.0 | carbono médio=72.0 | prob válida média=0.997 | rota seed0=Hub -> P3 -> P1 -> P2 -> Hub
+lambda=0.60 | E média=2.5171 | tempo médio=58.0 | carbono médio=79.0 | prob válida média=0.997 | rota seed0=Hub -> P3 -> P1 -> P2 -> Hub
+lambda=0.80 | E média=2.5817 | tempo médio=58.0 | carbono médio=79.0 | prob válida média=0.997 | rota seed0=Hub -> P3 -> P1 -> P2 -> Hub
+lambda=1.00 | E média=2.4132 | tempo médio=60.0 | carbono médio=72.0 | prob válida média=0.999 | rota seed0=Hub -> P3 -> P1 -> P2 -> Hub
+
+Lambda escolhido:
+lambda = 0.5
+alpha  = 0.5
+beta   = 0.5
+
+=== Experimento C: variando chi ===
+chi= 1 | E média=2.3233 ± 0.1753 | prob válida média=1.000
+chi= 2 | E média=2.4877 ± 0.1123 | prob válida média=0.998
+chi= 3 | E média=2.4389 ± 0.1583 | prob válida média=0.986
+chi= 5 | E média=2.5793 ± 0.1561 | prob válida média=0.954
+chi= 7 | E média=5.2423 ± 1.9509 | prob válida média=0.747
+chi=11 | E média=17.1646 ± 1.0453 | prob válida média=0.122
+
+Chi escolhido:
+chi = 1
+
+=== Treino final ===
+lambda = 0.5
+A      = 8.0
+chi    = 1
+Iteração 0020 | loss = 61.281972
+Iteração 0040 | loss = 57.603878
+Iteração 0060 | loss = 52.963420
+Iteração 0080 | loss = 38.160247
+Iteração 0100 | loss = 30.872596
+Iteração 0120 | loss = 21.649973
+Iteração 0140 | loss = 19.944524
+Iteração 0160 | loss = 18.320947
+Iteração 0180 | loss = 17.801567
+Iteração 0200 | loss = 17.837914
+Iteração 0220 | loss = 13.276131
+Iteração 0240 | loss = 9.505804
+Iteração 0260 | loss = 6.435020
+Iteração 0280 | loss = 5.420246
+Iteração 0300 | loss = 5.142033
+Iteração 0320 | loss = 4.602261
+Iteração 0340 | loss = 4.175072
+Iteração 0360 | loss = 4.150534
+Iteração 0380 | loss = 3.186270
+Iteração 0400 | loss = 3.024722
+Iteração 0420 | loss = 2.866706
+Iteração 0440 | loss = 2.835712
+Iteração 0460 | loss = 2.758829
+Iteração 0480 | loss = 2.801261
+Iteração 0500 | loss = 2.890617
+Iteração 0520 | loss = 2.503533
+Iteração 0540 | loss = 2.682490
+Iteração 0560 | loss = 2.599460
+Iteração 0580 | loss = 2.630638
+Iteração 0600 | loss = 2.544246
+Iteração 0620 | loss = 2.688578
+Iteração 0640 | loss = 2.388709
+Iteração 0660 | loss = 2.324629
+Iteração 0680 | loss = 2.311745
+Iteração 0700 | loss = 2.287979
+Iteração 0720 | loss = 2.263342
+Iteração 0740 | loss = 2.242370
+Iteração 0760 | loss = 2.205749
+Iteração 0780 | loss = 2.201567
+Iteração 0800 | loss = 2.182836
+Iteração 0820 | loss = 2.171619
+Iteração 0840 | loss = 2.172958
+Iteração 0860 | loss = 2.162919
+Iteração 0880 | loss = 2.158981
+Iteração 0900 | loss = 2.158812
+Iteração 0920 | loss = 2.160430
+Iteração 0940 | loss = 2.158075
+Iteração 0960 | loss = 2.159232
+Iteração 0980 | loss = 2.156049
+Iteração 1000 | loss = 2.155608
+Iteração 1020 | loss = 2.154121
+Iteração 1040 | loss = 2.154684
+Iteração 1060 | loss = 2.154428
+Iteração 1080 | loss = 2.155236
+Iteração 1100 | loss = 2.155683
+Iteração 1120 | loss = 2.153398
+Iteração 1140 | loss = 2.152911
+Iteração 1160 | loss = 2.152527
+Iteração 1180 | loss = 2.152287
+Iteração 1200 | loss = 2.151748
+Iteração 1220 | loss = 2.151349
+Iteração 1240 | loss = 2.150988
+Iteração 1260 | loss = 2.150630
+Iteração 1280 | loss = 2.150559
+Iteração 1300 | loss = 2.150406
+Iteração 1320 | loss = 2.150202
+Iteração 1340 | loss = 2.150226
+Iteração 1360 | loss = 2.150098
+Iteração 1380 | loss = 2.150104
+Iteração 1400 | loss = 2.150074
+Iteração 1420 | loss = 2.150062
+Iteração 1440 | loss = 2.150058
+Iteração 1460 | loss = 2.150055
+Iteração 1480 | loss = 2.150048
+Iteração 1500 | loss = 2.150050
+Iteração 1520 | loss = 2.150046
+Iteração 1540 | loss = 2.150047
+Iteração 1560 | loss = 2.150036
+Iteração 1580 | loss = 2.150031
+Iteração 1600 | loss = 2.150027
+Iteração 1620 | loss = 2.150023
+Iteração 1640 | loss = 2.150021
+Iteração 1660 | loss = 2.150017
+Iteração 1680 | loss = 2.150012
+Iteração 1700 | loss = 2.150009
+Iteração 1720 | loss = 2.150006
+Iteração 1740 | loss = 2.150005
+Iteração 1760 | loss = 2.150003
+Iteração 1780 | loss = 2.150002
+Iteração 1800 | loss = 2.150002
+Iteração 1820 | loss = 2.150001
+Iteração 1840 | loss = 2.150001
+Iteração 1860 | loss = 2.150001
+Iteração 1880 | loss = 2.150001
+Iteração 1900 | loss = 2.150001
+Iteração 1920 | loss = 2.150001
+Iteração 1940 | loss = 2.150001
+Iteração 1960 | loss = 2.150001
+Iteração 1980 | loss = 2.150000
+Iteração 2000 | loss = 2.150000
+Iteração 2020 | loss = 2.150000
+Iteração 2040 | loss = 2.150000
+
+=== Melhor rota válida encontrada ===
+bitstring: 001010100
+probabilidade: 0.9999999841581831
+rota: Hub -> P3 -> P2 -> P1 -> Hub
+tempo: 70.0 min
+carbono: 45.0 kg
+lambda: 0.5 | alpha: 0.5 | beta: 0.5
+A: 8.0 | chi: 1
+
+=== Melhor rota válida clássica para este lambda ===
+bitstring: 001010100
+energia: 2.15
+rota: Hub -> P3 -> P2 -> P1 -> Hub
+tempo: 70.0 min
+carbono: 45.0 kg
