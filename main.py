@@ -24,8 +24,10 @@
 
 import numpy as np
 import torch
-import pennylane as qml
 import matplotlib.pyplot as plt
+
+from ket.pytorch import KetUnitaryBridge
+from ket import RX, RY, RZ, CNOT
 
 torch.set_default_dtype(torch.float64)
 
@@ -202,48 +204,89 @@ def brute_force_best_valid(lam, A):
 
 
 # ============================================================
-# 3. Subcircuito local em PennyLane
+# 3. Subcircuito local em Ket usando PyTorch
 # ============================================================
 
-def pennylane_brickwall_ansatz(theta_sub, wires=(0, 1, 2)):
+# ============================================================
+# Opção 1 (Similar ao código do Cesar)
+# Manter aqui para ver possibilidade de adaptar o Ket
+# para rodar dessa forma
+# ============================================================
+
+# def ket_brickwall_ansatz(theta_flat_np, layers):
+#     """
+#     O Ansatz puro do Ket. Recebe os ângulos em 1D e reconstrói para 3D.
+#     """
+#     theta_np = theta_flat_np.reshape(layers, 3, 3)
+    
+#     def circuito(q):
+#         for l in range(layers):
+#             for j, wire in enumerate([0, 1, 2]):
+#                 RX(theta_np[l, j, 0], q[wire])
+#                 RY(theta_np[l, j, 1], q[wire])
+#                 RZ(theta_np[l, j, 2], q[wire])
+            
+#             # Brickwall local:
+#             CNOT(q[0], q[1])
+#             CNOT(q[1], q[2])
+            
+#     return circuito
+
+
+# def local_unitary_from_ket(theta_sub_tensor):
+#     """
+#     Constrói a matriz 8x8 chamando a Ponte.
+#     """
+#     layers = theta_sub_tensor.shape[0]
+#     theta_flat = theta_sub_tensor.reshape(-1)
+    
+#     # Usamos uma função anônima (lambda) para injetar o 'layers'
+#     # sem que o PyTorch perceba!
+#     ansatz_injetado = lambda t: ket_brickwall_ansatz(t, layers)
+
+#     # Chama a ponte nativa
+#     U = KetUnitaryBridge.apply(theta_flat, ansatz_injetado)
+    
+#     return U.to(torch.complex128)
+
+# ============================================================
+# Opção 2
+# Ansatz criado dentro da unitária local do Ket
+# ============================================================
+
+def local_unitary_from_ket(theta_sub_tensor):
     """
-    Subcircuito brickwall local de 3 qubits em PennyLane.
-
-    theta_sub shape:
-        (layers, 3, 3)
-
-    theta_sub[l,w,0] -> RX
-    theta_sub[l,w,1] -> RY
-    theta_sub[l,w,2] -> RZ
+    Constrói a matriz 8x8 do subcircuito local usando nossa PONTE Ket-PyTorch.
+    theta_sub_tensor shape original: (layers, 3, 3)
     """
-    layers = theta_sub.shape[0]
+    layers = theta_sub_tensor.shape[0]
+    
+    # 1. Achatamos o tensor para 1D para a nossa ponte iterar os gradientes corretamente
+    theta_flat = theta_sub_tensor.reshape(-1)
+    
+    # 2. Criamos o "Closure" do Ansatz do Ket
+    def ket_ansatz(theta_flat_np):
+        # Reconstrói o formato 3D dentro do simulador
+        theta_np = theta_flat_np.reshape(layers, 3, 3)
+        
+        def circuito(q):
+            for l in range(layers):
+                for j, wire in enumerate([0, 1, 2]):
+                    RX(theta_np[l, j, 0], q[wire])
+                    RY(theta_np[l, j, 1], q[wire])
+                    RZ(theta_np[l, j, 2], q[wire])
+                
+                # Brickwall local:
+                CNOT(q[0], q[1])
+                CNOT(q[1], q[2])
+                
+        return circuito
 
-    for l in range(layers):
-        for j, wire in enumerate(wires):
-            qml.RX(theta_sub[l, j, 0], wires=wire)
-            qml.RY(theta_sub[l, j, 1], wires=wire)
-            qml.RZ(theta_sub[l, j, 2], wires=wire)
-
-        # Brickwall local:
-        qml.CNOT(wires=[wires[0], wires[1]])
-        qml.CNOT(wires=[wires[1], wires[2]])
-
-
-def local_unitary_from_pennylane(theta_sub):
-    """
-    Constrói a matriz 8x8 do subcircuito local usando PennyLane.
-
-    Esta função é diferenciável com Torch, pois theta_sub é torch.Tensor.
-    """
-    U = qml.matrix(pennylane_brickwall_ansatz, wire_order=[0, 1, 2])(theta_sub, wires=(0, 1, 2))
-
-    # Garante dtype complexo compatível com as contrações.
-    if not torch.is_tensor(U):
-        U = torch.tensor(U, dtype=torch.complex128)
-    else:
-        U = U.to(torch.complex128)
-
-    return U
+    # 3. CHAMA A PONTE (A mágica acontece aqui!)
+    U = KetUnitaryBridge.apply(theta_flat, ket_ansatz)
+    
+    # Garante dtype complexo compatível com as contrações clássicas
+    return U.to(torch.complex128)
 
 
 # ============================================================
@@ -275,9 +318,9 @@ def global_state(theta, G0_re, G0_im, G1_re, G1_im, G2_re, G2_im):
     """
     C = build_C_from_mps(G0_re, G0_im, G1_re, G1_im, G2_re, G2_im)
 
-    U0 = local_unitary_from_pennylane(theta[0])
-    U1 = local_unitary_from_pennylane(theta[1])
-    U2 = local_unitary_from_pennylane(theta[2])
+    U0 = local_unitary_from_ket(theta[0])
+    U1 = local_unitary_from_ket(theta[1])
+    U2 = local_unitary_from_ket(theta[2])
 
     phi = torch.einsum("ai,bj,ck,ijk->abc", U0, U1, U2, C)
 
@@ -405,22 +448,28 @@ def best_valid_from_probs(probs):
 # 7. Desenho textual do circuito PennyLane
 # ============================================================
 
+# def print_example_circuit(layers=5):
+#     """
+#     Mostra o subcircuito local de 3 qubits.
+#     """
+#     dev = qml.device("default.qubit", wires=3)
+
+#     @qml.qnode(dev)
+#     def example_qnode(params):
+#         pennylane_brickwall_ansatz(params, wires=(0, 1, 2))
+#         return qml.state()
+
+#     params = np.zeros((layers, 3, 3))
+
+#     print("\n=== Subcircuito local PennyLane ===")
+#     print(qml.draw(example_qnode)(params))
+
 def print_example_circuit(layers=5):
-    """
-    Mostra o subcircuito local de 3 qubits.
-    """
-    dev = qml.device("default.qubit", wires=3)
-
-    @qml.qnode(dev)
-    def example_qnode(params):
-        pennylane_brickwall_ansatz(params, wires=(0, 1, 2))
-        return qml.state()
-
-    params = np.zeros((layers, 3, 3))
-
-    print("\n=== Subcircuito local PennyLane ===")
-    print(qml.draw(example_qnode)(params))
-
+    print("\n============================================================")
+    print("ARQUITETURA HÍBRIDA: PyTorch + Ket")
+    print(f"-> Simulando subcircuitos locais com {layers} camadas (RX, RY, RZ + CNOT)")
+    print("-> Gradientes quânticos (Parameter-Shift) rastreados via Autograd")
+    print("============================================================\n")
 
 # ============================================================
 # 8. Experimento A: variar A
