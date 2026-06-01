@@ -238,6 +238,7 @@ def brute_force_best_valid(lam, A):
 #     Constrói a matriz 8x8 chamando a Ponte.
 #     """
 #     layers = theta_sub_tensor.shape[0]
+#     num_qubits = 3
 #     theta_flat = theta_sub_tensor.reshape(-1)
     
 #     # Usamos uma função anônima (lambda) para injetar o 'layers'
@@ -245,7 +246,7 @@ def brute_force_best_valid(lam, A):
 #     ansatz_injetado = lambda t: ket_brickwall_ansatz(t, layers)
 
 #     # Chama a ponte nativa
-#     U = KetUnitaryBridge.apply(theta_flat, ansatz_injetado)
+#     U = KetUnitaryBridge.apply(theta_flat, ansatz_injetado, num_qubits)
     
 #     return U.to(torch.complex128)
 
@@ -260,7 +261,8 @@ def local_unitary_from_ket(theta_sub_tensor):
     theta_sub_tensor shape original: (layers, 3, 3)
     """
     layers = theta_sub_tensor.shape[0]
-    
+    num_qubits = 3
+
     # 1. Achatamos o tensor para 1D para a nossa ponte iterar os gradientes corretamente
     theta_flat = theta_sub_tensor.reshape(-1)
     
@@ -283,7 +285,7 @@ def local_unitary_from_ket(theta_sub_tensor):
         return circuito
 
     # 3. CHAMA A PONTE (A mágica acontece aqui!)
-    U = KetUnitaryBridge.apply(theta_flat, ket_ansatz)
+    U = KetUnitaryBridge.apply(theta_flat, ket_ansatz, num_qubits)
     
     # Garante dtype complexo compatível com as contrações clássicas
     return U.to(torch.complex128)
