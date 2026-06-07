@@ -1,0 +1,70 @@
+
+============================================================
+ARQUITETURA HÍBRIDA: PyTorch + Ket
+-> Simulando subcircuitos locais com 2 camadas (RX, RY, RZ + CNOT)
+-> Gradientes quânticos (Parameter-Shift) rastreados via Autograd
+============================================================
+
+
+=== Experimento A: variando penalidade A ===
+lambda fixo = 0.5
+chi fixo    = 2
+A= 0.20 | inválidas top20 = 10/20 | massa inválida top20 = 1.000
+A= 0.50 | inválidas top20 = 10/20 | massa inválida top20 = 1.000
+A= 1.00 | inválidas top20 = 10/20 | massa inválida top20 = 1.000
+A= 2.00 | inválidas top20 =  9/20 | massa inválida top20 = 0.884
+A= 4.00 | inválidas top20 =  7/20 | massa inválida top20 = 0.673
+A= 8.00 | inválidas top20 =  7/20 | massa inválida top20 = 0.645
+A=12.00 | inválidas top20 =  7/20 | massa inválida top20 = 0.642
+
+=== Experimento B: variando lambda ===
+alpha=lambda, beta=1-lambda
+A fixo   = 8.0
+chi fixo = 2
+lambda=0.00 | E média=14.8276 | tempo médio=62.0 | carbono médio=57.0 | prob válida média=0.169 | rota seed0=Hub -> P3 -> P2 -> P1 -> Hub
+lambda=0.20 | E média=14.7809 | tempo médio=62.0 | carbono médio=57.0 | prob válida média=0.169 | rota seed0=Hub -> P3 -> P2 -> P1 -> Hub
+lambda=0.40 | E média=14.7299 | tempo médio=62.0 | carbono médio=57.0 | prob válida média=0.170 | rota seed0=Hub -> P3 -> P2 -> P1 -> Hub
+lambda=0.60 | E média=14.6747 | tempo médio=62.0 | carbono médio=57.0 | prob válida média=0.170 | rota seed0=Hub -> P3 -> P2 -> P1 -> Hub
+lambda=0.80 | E média=14.6152 | tempo médio=62.0 | carbono médio=57.0 | prob válida média=0.170 | rota seed0=Hub -> P3 -> P2 -> P1 -> Hub
+lambda=1.00 | E média=14.5515 | tempo médio=62.0 | carbono médio=57.0 | prob válida média=0.170 | rota seed0=Hub -> P3 -> P2 -> P1 -> Hub
+
+Lambda escolhido:
+lambda = 0.5
+alpha  = 0.5
+beta   = 0.5
+
+=== Experimento C: variando chi ===
+chi= 1 | E média=15.4933 ± 2.5710 | prob válida média=0.230
+chi= 2 | E média=14.7028 ± 1.5145 | prob válida média=0.170
+chi= 3 | E média=11.4915 ± 2.4466 | prob válida média=0.305
+chi= 5 | E média=11.0190 ± 1.2218 | prob válida média=0.246
+chi= 7 | E média=8.5275 ± 2.6364 | prob válida média=0.329
+chi=11 | E média=6.0949 ± 0.8864 | prob válida média=0.457
+
+Chi escolhido:
+chi = 11
+
+=== Treino final ===
+lambda = 0.5
+A      = 8.0
+chi    = 11
+epoch 0000 | loss = 57.085203
+epoch 0019 | loss = 7.643423
+
+=== Melhor rota válida encontrada ===
+bitstring: 100001010
+probabilidade: 0.3361543606937265
+rota: Hub -> P1 -> P3 -> P2 -> Hub
+tempo: 50.0 min
+carbono: 75.0 kg
+lambda: 0.5 | alpha: 0.5 | beta: 0.5
+A: 8.0 | chi: 11
+
+=== Melhor rota válida clássica para este lambda ===
+bitstring: 001010100
+energia: 2.15
+rota: Hub -> P3 -> P2 -> P1 -> Hub
+tempo: 70.0 min
+carbono: 45.0 kg
+
+[Execução finalizada com sucesso. Logs e gráficos salvos.]
